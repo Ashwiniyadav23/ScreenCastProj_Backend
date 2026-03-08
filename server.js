@@ -31,7 +31,7 @@ const limiter = rateLimit({
 app.use(helmet());
 app.use(limiter);
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:5173',
   credentials: true
 }));
 app.use(express.json({ limit: '50mb' }));
@@ -65,18 +65,21 @@ app.use((req, res) => {
 });
 
 // MongoDB connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/screencast')
-  .then(() => {
-    console.log('Connected to MongoDB');
-  })
-  .catch((error) => {
-    console.error('MongoDB connection error:', error);
-    process.exit(1);
-  });
+if (process.env.MONGODB_URI) {
+  mongoose.connect(process.env.MONGODB_URI)
+    .then(() => {
+      console.log('Connected to MongoDB');
+    })
+    .catch((error) => {
+      console.error('MongoDB connection error:', error);
+      // Don't exit process in serverless environment
+      if (process.env.NODE_ENV !== 'production') {
+        process.exit(1);
+      }
+    });
+} else {
+  console.error('MONGODB_URI environment variable is not set');
+}
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
-
+// For Vercel deployment - don't start server
 export default app;
