@@ -65,21 +65,33 @@ app.use((req, res) => {
 });
 
 // MongoDB connection
-if (process.env.MONGODB_URI) {
-  mongoose.connect(process.env.MONGODB_URI)
-    .then(() => {
-      console.log('Connected to MongoDB');
-    })
-    .catch((error) => {
-      console.error('MongoDB connection error:', error);
-      // Don't exit process in serverless environment
-      if (process.env.NODE_ENV !== 'production') {
-        process.exit(1);
-      }
+let isConnected = false;
+
+const connectDB = async () => {
+  if (isConnected) {
+    return;
+  }
+  
+  try {
+    if (!process.env.MONGODB_URI) {
+      console.error('MONGODB_URI environment variable is not set');
+      return;
+    }
+    
+    await mongoose.connect(process.env.MONGODB_URI, {
+      bufferCommands: false,
     });
-} else {
-  console.error('MONGODB_URI environment variable is not set');
-}
+    
+    isConnected = true;
+    console.log('Connected to MongoDB');
+  } catch (error) {
+    console.error('MongoDB connection error:', error);
+    // Don't throw in serverless - let the app start without DB for now
+  }
+};
+
+// Initialize DB connection
+connectDB();
 
 // For Vercel deployment - don't start server
 export default app;
