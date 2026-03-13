@@ -6,23 +6,48 @@ import fs from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Ensure uploads directory exists
-const uploadDir = path.join(path.dirname(__dirname), 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+const isProduction = process.env.NODE_ENV === 'production';
+const configuredUploadDir = process.env.UPLOAD_DIR;
+
+const uploadDir = (() => {
+  if (isProduction) {
+    if (configuredUploadDir && path.isAbsolute(configuredUploadDir)) {
+      return configuredUploadDir;
+    }
+
+    return '/tmp/uploads';
+  }
+
+  if (configuredUploadDir) {
+    return path.resolve(configuredUploadDir);
+  }
+
+  return path.join(path.dirname(__dirname), 'uploads');
+})();
+
+const ensureDir = (dirPath) => {
+  try {
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+  } catch (error) {
+    console.error(`Failed to create upload directory: ${dirPath}`, error.message);
+    throw new Error('Upload storage is not available');
+  }
+};
+
+ensureDir(uploadDir);
 
 // Configure storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const userDir = path.join(uploadDir, req.user._id.toString());
-    
-    // Create user directory if it doesn't exist
-    if (!fs.existsSync(userDir)) {
-      fs.mkdirSync(userDir, { recursive: true });
+    try {
+      const userDir = path.join(uploadDir, req.user._id.toString());
+      ensureDir(userDir);
+      cb(null, userDir);
+    } catch (error) {
+      cb(error);
     }
-    
-    cb(null, userDir);
   },
   filename: (req, file, cb) => {
     // Generate unique filename with timestamp
