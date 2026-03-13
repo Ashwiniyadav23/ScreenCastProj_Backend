@@ -30,20 +30,25 @@ const ensureDir = (dirPath) => {
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath, { recursive: true });
     }
+    return true;
   } catch (error) {
     console.error(`Failed to create upload directory: ${dirPath}`, error.message);
-    throw new Error('Upload storage is not available');
+    return false;
   }
 };
-
-ensureDir(uploadDir);
 
 // Configure storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     try {
       const userDir = path.join(uploadDir, req.user._id.toString());
-      ensureDir(userDir);
+      const baseDirReady = ensureDir(uploadDir);
+      const userDirReady = baseDirReady && ensureDir(userDir);
+
+      if (!userDirReady) {
+        return cb(new Error('Upload storage is not available'));
+      }
+
       cb(null, userDir);
     } catch (error) {
       cb(error);
