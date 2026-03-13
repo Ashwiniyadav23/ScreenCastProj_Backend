@@ -43,10 +43,16 @@ export const uploadRecording = async (req, res) => {
 
     await recording.save();
 
+    // Generate full URL for accessing the file
+    const protocol = req.protocol || 'http';
+    const host = req.get('host');
+    const fullUrl = `${protocol}://${host}/uploads/${req.user._id}/${req.file.filename}`;
+
     res.status(201).json({
       message: 'Recording uploaded successfully',
       recording: recording,
-      url: `/uploads/${req.user._id}/${req.file.filename}`
+      url: fullUrl,
+      public_url: fullUrl
     });
   } catch (error) {
     // Clean up uploaded file on error
@@ -79,9 +85,16 @@ export const getUserRecordings = async (req, res) => {
     const total = await Recording.countDocuments({ userId: req.user._id });
 
     // Add full URL to each recording
+    const protocol = req.protocol || 'http';
+    const host = req.get('host');
+    
     const recordingsWithUrls = recordings.map(recording => ({
       ...recording.toJSON(),
-      url: `/uploads/${req.user._id}/${recording.fileName}`
+      id: recording._id,
+      url: `${protocol}://${host}/uploads/${req.user._id}/${recording.fileName}`,
+      public_url: `${protocol}://${host}/uploads/${req.user._id}/${recording.fileName}`,
+      created_at: recording.createdAt,
+      file_size: recording.fileSize
     }));
 
     res.json({
@@ -248,9 +261,16 @@ export const getPublicRecordings = async (req, res) => {
     const total = await Recording.countDocuments({ isPublic: true });
 
     // Add full URL to each recording
+    const protocol = req.protocol || 'http';
+    const host = req.get('host');
+    
     const recordingsWithUrls = recordings.map(recording => ({
       ...recording.toJSON(),
-      url: `/uploads/${recording.userId._id}/${recording.fileName}`
+      id: recording._id,
+      url: `${protocol}://${host}/uploads/${req.user._id}/${recording.fileName}`,
+      public_url: `${protocol}://${host}/uploads/${req.user._id}/${recording.fileName}`,
+      created_at: recording.createdAt,
+      file_size: recording.fileSize
     }));
 
     res.json({

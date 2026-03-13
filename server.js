@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 import authRoutes from './routes/auth.js';
@@ -37,8 +38,13 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Serve static files (recordings)
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve static files (recordings) with proper headers
+app.use('/uploads', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -48,6 +54,31 @@ app.use('/api/users', userRoutes);
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'ScreenCast API is running' });
+});
+
+// Test endpoint to check file serving
+app.get('/api/test-upload/:userId/:filename', (req, res) => {
+  const { userId, filename } = req.params;
+  const filePath = path.join(__dirname, 'uploads', userId, filename);
+  
+  if (fs.existsSync(filePath)) {
+    const protocol = req.protocol || 'http';
+    const host = req.get('host');
+    const fullUrl = `${protocol}://${host}/uploads/${userId}/${filename}`;
+    
+    res.json({ 
+      exists: true, 
+      path: filePath, 
+      url: fullUrl,
+      size: fs.statSync(filePath).size
+    });
+  } else {
+    res.status(404).json({ 
+      exists: false, 
+      path: filePath,
+      message: 'File not found' 
+    });
+  }
 });
 
 // Error handling middleware
@@ -92,6 +123,13 @@ const connectDB = async () => {
 
 // Initialize DB connection
 connectDB();
+
+// Start server in local development
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
 
 // For Vercel deployment - don't start server
 export default app;
