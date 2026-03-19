@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# env files
+.env
+.env.*
+!.env.example
+
+# uploads
+uploads/
+
+# logs
+*.log
+npm-debug.log*
+
+# os/editor
+.DS_Store
+.vscode/
+.idea/

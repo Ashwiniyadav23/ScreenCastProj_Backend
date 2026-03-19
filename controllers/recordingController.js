@@ -20,6 +20,12 @@ export const uploadRecording = async (req, res) => {
       });
     }
 
+    if (!req.file.size || req.file.size <= 0) {
+      return res.status(400).json({
+        message: 'Uploaded file is empty. Please record for at least a few seconds and try again.'
+      });
+    }
+
     const { title, description, duration, tags } = req.body;
     
     // Parse tags if provided as string

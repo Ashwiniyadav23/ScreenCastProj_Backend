@@ -20,6 +20,11 @@ export const authenticateToken = async (req, res, next) => {
     req.user = user;
     next();
   } catch (error) {
+    if (error?.name === 'MongoServerSelectionError' || error?.name === 'MongoNetworkError') {
+      console.error('Auth middleware database error:', error);
+      return res.status(503).json({ message: 'Database temporarily unavailable. Please try again in a moment.' });
+    }
+
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({ message: 'Invalid token' });
     }

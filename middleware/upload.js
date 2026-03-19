@@ -2,28 +2,16 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { resolveUploadDir } from '../lib/uploads.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const isProduction = process.env.NODE_ENV === 'production';
-const configuredUploadDir = process.env.UPLOAD_DIR;
-
-const uploadDir = (() => {
-  if (isProduction) {
-    if (configuredUploadDir && path.isAbsolute(configuredUploadDir)) {
-      return configuredUploadDir;
-    }
-
-    return '/tmp/uploads';
-  }
-
-  if (configuredUploadDir) {
-    return path.resolve(configuredUploadDir);
-  }
-
-  return path.join(path.dirname(__dirname), 'uploads');
-})();
+const uploadDir = resolveUploadDir({
+  isProduction,
+  projectRootDir: path.dirname(__dirname)
+});
 
 const ensureDir = (dirPath) => {
   try {
@@ -65,11 +53,25 @@ const storage = multer.diskStorage({
 
 // File filter
 const fileFilter = (req, file, cb) => {
-  // Accept only video files
-  if (file.mimetype.startsWith('video/')) {
+  const mimeType = (file.mimetype || '').toLowerCase();
+  const extension = path.extname(file.originalname || '').toLowerCase();
+  const originalName = (file.originalname || '').toLowerCase();
+  const allowedExtensions = new Set(['.webm', '.mp4', '.mov', '.mkv', '.ogg']);
+
+  const isVideoMime = mimeType.startsWith('video/');
+  const isLikelyRecorderBlobName = originalName === 'blob' || originalName === 'recording';
+  const hasKnownVideoExtension = allowedExtensions.has(extension);
+
+  const isRecorderBlobUpload =
+    file.fieldname === 'recording' &&
+    (hasKnownVideoExtension || isLikelyRecorderBlobName || !extension);
+
+  if (isVideoMime || hasKnownVideoExtension || isRecorderBlobUpload) {
     cb(null, true);
   } else {
-    cb(new Error('Only video files are allowed'), false);
+    const error = new Error('Only video files are allowed');
+    error.status = 400;
+    cb(error, false);
   }
 };
 

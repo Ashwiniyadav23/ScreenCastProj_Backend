@@ -1,10 +1,16 @@
 let cachedApp;
+let ensureDbConnection;
 
 export default async function handler(req, res) {
 	try {
 		if (!cachedApp) {
 			const module = await import('../server.js');
 			cachedApp = module.default;
+			ensureDbConnection = module.connectDB;
+		}
+
+		if (typeof ensureDbConnection === 'function') {
+			await ensureDbConnection();
 		}
 
 		return cachedApp(req, res);

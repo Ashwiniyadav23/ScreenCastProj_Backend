@@ -7,6 +7,7 @@ import rateLimit from 'express-rate-limit';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { resolveUploadDir } from './lib/uploads.js';
 
 import authRoutes from './routes/auth.js';
 import recordingRoutes from './routes/recordings.js';
@@ -20,6 +21,11 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const isProduction = process.env.NODE_ENV === 'production';
+const uploadDir = resolveUploadDir({
+  isProduction,
+  projectRootDir: __dirname
+});
 
 const allowedOrigins = [
   process.env.FRONTEND_URL,
@@ -37,6 +43,10 @@ const isAllowedOrigin = (origin) => {
     return true;
   }
 
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) {
+    return true;
+  }
+
   return /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin);
 };
 
@@ -46,7 +56,9 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    return callback(new Error('Not allowed by CORS'));
+    const corsError = new Error(`Not allowed by CORS: ${origin}`);
+    corsError.status = 403;
+    return callback(corsError);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -61,7 +73,9 @@ const limiter = rateLimit({
 });
 
 // Middleware
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: false
+}));
 app.use(limiter);
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
@@ -74,7 +88,7 @@ app.use('/uploads', (req, res, next) => {
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   next();
-}, express.static(path.join(__dirname, 'uploads')));
+}, express.static(uploadDir));
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -89,7 +103,7 @@ app.get('/api/health', (req, res) => {
 // Test endpoint to check file serving
 app.get('/api/test-upload/:userId/:filename', (req, res) => {
   const { userId, filename } = req.params;
-  const filePath = path.join(__dirname, 'uploads', userId, filename);
+  const filePath = path.join(uploadDir, userId, filename);
   
   if (fs.existsSync(filePath)) {
     const protocol = req.protocol || 'http';
@@ -113,9 +127,24 @@ app.get('/api/test-upload/:userId/:filename', (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ 
-    message: 'Something went wrong!', 
+  const statusCode = err.status || (err.name === 'MulterError' ? 400 : 500);
+  if (statusCode >= 500) {
+    console.error(err.stack || err.message);
+  } else {
+    console.warn(err.message);
+  }
+
+  const isClientError = statusCode >= 400 && statusCode < 500;
+
+  let message = 'Something went wrong!';
+  if (statusCode === 403) {
+    message = 'CORS origin is not allowed';
+  } else if (isClientError) {
+    message = err.message || 'Bad request';
+  }
+
+  res.status(statusCode).json({ 
+    message,
     error: process.env.NODE_ENV === 'development' ? err.message : {} 
   });
 });
@@ -127,32 +156,43 @@ app.use((req, res) => {
 
 // MongoDB connection
 let isConnected = false;
+let connectionPromise = null;
 
-const connectDB = async () => {
-  if (isConnected) {
+export const connectDB = async () => {
+  if (isConnected || mongoose.connection.readyState === 1) {
+    isConnected = true;
     return;
+  }
+
+  if (connectionPromise) {
+    return connectionPromise;
   }
   
   try {
     if (!process.env.MONGODB_URI) {
-      console.error('MONGODB_URI environment variable is not set');
-      return;
+      throw new Error('MONGODB_URI environment variable is not set');
     }
-    
-    await mongoose.connect(process.env.MONGODB_URI, {
+
+    connectionPromise = mongoose.connect(process.env.MONGODB_URI, {
       bufferCommands: false,
     });
+
+    await connectionPromise;
     
     isConnected = true;
     console.log('Connected to MongoDB');
   } catch (error) {
+    connectionPromise = null;
+    isConnected = false;
     console.error('MongoDB connection error:', error);
-    // Don't throw in serverless - let the app start without DB for now
+    throw error;
   }
 };
 
 // Initialize DB connection
-connectDB();
+connectDB().catch((error) => {
+  console.error('Initial DB connection failed:', error.message);
+});
 
 // Start server in local development
 if (process.env.NODE_ENV !== 'production') {

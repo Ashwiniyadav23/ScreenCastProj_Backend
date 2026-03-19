@@ -35,9 +35,11 @@ export const register = async (req, res) => {
     // Generate tokens
     const { accessToken, refreshToken } = generateTokens(user._id);
 
-    // Update user with refresh token
-    user.refreshToken = refreshToken;
-    await user.save();
+    // Update user with refresh token without triggering full document validation
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { refreshToken } }
+    );
 
     res.status(201).json({
       message: 'User registered successfully',
@@ -49,6 +51,13 @@ export const register = async (req, res) => {
     });
   } catch (error) {
     console.error('Registration error:', error);
+    if (error?.name === 'MongoServerSelectionError' || error?.name === 'MongoNetworkError') {
+      return res.status(503).json({
+        message: 'Database temporarily unavailable. Please try again in a moment.',
+        error: error.message
+      });
+    }
+
     res.status(500).json({
       message: 'Registration failed',
       error: error.message
@@ -77,8 +86,20 @@ export const login = async (req, res) => {
       });
     }
 
+    if (!user.password) {
+      return res.status(401).json({
+        message: 'Invalid email or password'
+      });
+    }
+
     // Check password
-    const isPasswordValid = await user.comparePassword(password);
+    let isPasswordValid = false;
+    try {
+      isPasswordValid = await user.comparePassword(password);
+    } catch (compareError) {
+      isPasswordValid = false;
+    }
+
     if (!isPasswordValid) {
       return res.status(401).json({
         message: 'Invalid email or password'
@@ -88,9 +109,11 @@ export const login = async (req, res) => {
     // Generate tokens
     const { accessToken, refreshToken } = generateTokens(user._id);
 
-    // Update user with refresh token
-    user.refreshToken = refreshToken;
-    await user.save();
+    // Update user with refresh token without triggering full document validation
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { refreshToken } }
+    );
 
     res.json({
       message: 'Login successful',
@@ -102,6 +125,13 @@ export const login = async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
+    if (error?.name === 'MongoServerSelectionError' || error?.name === 'MongoNetworkError') {
+      return res.status(503).json({
+        message: 'Database temporarily unavailable. Please try again in a moment.',
+        error: error.message
+      });
+    }
+
     res.status(500).json({
       message: 'Login failed',
       error: error.message
@@ -111,11 +141,10 @@ export const login = async (req, res) => {
 
 export const logout = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
-    if (user) {
-      user.refreshToken = null;
-      await user.save();
-    }
+    await User.updateOne(
+      { _id: req.user._id },
+      { $set: { refreshToken: null } }
+    );
 
     res.json({
       message: 'Logged out successfully'
