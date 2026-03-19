@@ -100,6 +100,14 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'ScreenCast API is running' });
 });
 
+// Root endpoint for deployment sanity checks
+app.get('/', (req, res) => {
+  res.json({
+    message: 'ScreenCast backend is running',
+    health: '/api/health'
+  });
+});
+
 // Test endpoint to check file serving
 app.get('/api/test-upload/:userId/:filename', (req, res) => {
   const { userId, filename } = req.params;
